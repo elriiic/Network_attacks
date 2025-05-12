@@ -32,7 +32,7 @@ table inet filter {
     }
 }
 ```
-- r1 could be ip-oriented "iif r1-eth0 ip saddr 10.1.0.0/24 accept".
+- r1 could be ip-oriented "iif r1-eth0 ip saddr 10.1.0.0/24 accept" or shorter "iif r1-eth0 accept".
 - r1 accept response to new/old connections
 - DMZ servers can ping each other has the case has been discuted in teams. Otherwise additionnal firewall would have been needed for each DMZ server.
 
