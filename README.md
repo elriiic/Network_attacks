@@ -49,10 +49,8 @@ table inet filter {
     chain forward {
         type filter hook forward priority 0; policy drop;
         
-        # Allow established/related connections
         ct state established,related accept	
         
-        # Allow workstations to access internet 
         iif r2-eth12 oif r2-eth0 ip saddr 10.1.0.0/24 accept
         
         iif r2-eth0 oif r2-eth12 accept
