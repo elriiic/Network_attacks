@@ -1,8 +1,8 @@
 # LINFO2347 – Project Network Attacks
 
 ## Authors
-Deroeux Elric (noma:)
-Lévêque Quentin (noma:)
+Deroeux Elric (noma: 70502301)
+Lévêque Quentin (noma: )
 
 ## Files
 - The mininet topology -> `~/LINFO2347/topo.py`
@@ -103,7 +103,7 @@ This attack only targets **TCP ports**, meaning it will completely miss services
 
 #### Result
 ```
-mininet> internet python3 /home/student-linfo2347LINFO2347/network_port_scan.py
+mininet> internet python3 ~/LINFO2347/attacks/network_port_scan/main.py
 Scanning IP: 10.12.0.10
 10.12.0.10:80 is open
 Scanning 10.12.0.10 took 34.14 seconds
@@ -125,11 +125,11 @@ To mitigate TCP port scans, the router `r2` includes a firewall rule using `nfta
 
 A dynamic set `banned_ips` is used to store IP addresses that trigger the detection threshold. If a source IP sends more than 6 SYN packets per second, it is automatically added to the set and blocked for 1 hour.
 
+Apply the protection with `nft -f ~/LINFO2347/protections/network_port_scan/r2.nft`
+
 We can monitor the list of banned IP addresses at any time using:
 
-```
-mininet> r2 nft list set inet filter banned_ips
-```
+`mininet> r2 nft list set inet filter banned_ips`
 
 ```
 table inet filter {
