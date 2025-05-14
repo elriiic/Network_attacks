@@ -77,19 +77,19 @@ def apply_nftables_rules(net: Mininet) -> None:
 We call this function after the `add_routes` function.
 
 
-##DNS Cache Poisoning
+## DNS Cache Poisoning
 
-###Attack
+### Attack
 This script manage `r1` to intercept DNS requests from the workstations (`ws2` and `ws3`) and spoof the DNS response. By doing so, it aim to poison the DNS cache with a forged IP address (`1.2.3.4`) configurable, redirecting future requests for that domain (`example.com`) to a malicious server.
 We use `example.com` due to the configuration of the DNS server that associate `example.com` to the IP adress `192.0.2.192` as it's specified in the dnsmasq config `address=/example.com/192.0.2.192`
 
-####Config
+#### Config
 ```
 TARGET_DOMAIN = b"example.com."
 FAKE_IP = "1.2.3.4"
 DNS_PORT = 5353
 ```
-####Sniffing
+#### Sniffing
 `r1` start sniffing all the DNS packet that go through `r1-eth0` and start to anaylze them.
 ```python
 from scapy.all import *
@@ -97,7 +97,7 @@ from scapy.all import *
 print(f"Listening for DNS queries on port {DNS_PORT}...")
 sniff(filter=f"udp port {DNS_PORT}", iface="r1-eth0", prn=spoof_dns, store=0)
 ```
-####Filtering
+#### Filtering
 It drop the packet that are not query and that are not asking about the domain `example.com`
 ```python
     ...
@@ -112,7 +112,7 @@ It drop the packet that are not query and that are not asking about the domain `
     print(f"{qname.decode()} found, spoofing DNS response ...")
     ...
 ```
-####Spoofing
+#### Spoofing
 It use informations of intercepted packet to build a credible response. 
 It invert source and destination IPs and ports, it use the same ID request and use the fake ip adress.
 Then it send the spoofed packet that should come before the DNS response.
@@ -132,9 +132,9 @@ Then it send the spoofed packet that should come before the DNS response.
     print(f"Spoofed packet sent with ip {FAKE_IP}")
 ...
 ```
-####Perform the attack
+#### Perform the attack
 On `r1` execute the script `python3 ~/LINFO2347/attacks/dns_cache_poisoning.py`
 Then on `ws2`OR/AND `ws3` perform a DNS query to the DNS server asking for example.com `dig @10.12.0.20 -p 5353 example.com +short`
-####Result
+#### Result
 Based on the DNS response of the `dig` command
 Either `192.0.2.192` if the attack missed or `1.2.3.4` if it worked
