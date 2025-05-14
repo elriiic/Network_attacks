@@ -138,3 +138,18 @@ Then on `ws2`OR/AND `ws3` perform a DNS query to the DNS server asking for examp
 #### Result
 Based on the DNS response of the `dig` command
 Either `192.0.2.192` if the attack missed or `1.2.3.4` if it worked
+
+Note : We are aware that the DNS cache poisoning could have been performed on the DNS instead on the Workstation, that would have impacted all the network and be more persistant. 
+The step would have been similar but the sniff would have to be on r2 to intercept our DNS server request.
+
+### Protection
+Since the attack is timed, `related/established` rule wont work. 
+Neither for `ip saddr 10.12.0.20` or `sport 5353` due to the spoofing.
+Default drop on `r1` output doesn't seems to work due to spoofing.
+
+Allowing dnssec in the `/etc/dnsmasq.conf` could protect.
+
+In a normal environement it would be very hard to assemble right timing, right ID and right port as it could be randomise too.
+In one of these condition not proprelly done we could block the attack using an nftable.
+
+(Or surely is it possible but we didnt found the way to do it).
