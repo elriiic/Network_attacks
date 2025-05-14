@@ -116,7 +116,7 @@ It drop the packet that are not query and that are not asking about the domain `
 It use informations of intercepted packet to build a credible response. 
 It invert source and destination IPs and ports, it use the same ID request and use the fake ip adress.
 Then it send the spoofed packet that should come before the DNS response.
-```
+```python
 ...
     ip = IP(dst=pkt[IP].src, src=pkt[IP].dst)
     udp = UDP(dport=pkt[UDP].sport, sport=DNS_PORT)
